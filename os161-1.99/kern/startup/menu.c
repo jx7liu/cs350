@@ -496,7 +496,8 @@ cmd_testmenu(int n, char **a)
 
 static const char *mainmenu[] = {
 	"[?o] Operations menu                ",
-	"[?t] Tests menu                     ",
+	"[?t] Tests menu                     ",	
+	"[dth] Enable thread debug message   ",
 #if OPT_SYNCHPROBS
 	"[sp1] Whale Mating                  ",
 #ifdef UW
@@ -520,6 +521,18 @@ cmd_mainmenu(int n, char **a)
 	return 0;
 }
 
+static
+int
+cmd_dth(int n, char **a)
+{
+	(void)n;
+	(void)a;
+
+	dbflags = DB_THREADS;
+	return 0;
+
+}
+
 ////////////////////////////////////////
 //
 // Command table.
@@ -534,6 +547,7 @@ static struct {
 	{ "help",	cmd_mainmenu },
 	{ "?o",		cmd_opsmenu },
 	{ "?t",		cmd_testmenu },
+	{ "dth",	cmd_dth},
 
 	/* operations */
 	{ "s",		cmd_shell },
