@@ -17,7 +17,10 @@ void intersection_sync_init(void);
 void intersection_sync_cleanup(void);
 void intersection_before_entry(Direction origin, Direction destination);
 void intersection_after_exit(Direction origin, Direction destination);
-
+//int which_turn (Direction o, Direction d);
+//bool turns_right(Direction o, Direction d);
+bool which_turn (Direction o, Direction d);
+bool car_cango (Direction o, Direction d);
 /* student-implemented functions for the cat/mouse problem */
 
 void cat_before_eating(unsigned int bowl);

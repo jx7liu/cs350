@@ -21,42 +21,105 @@
 /*
  * replace this with declarations of any synchronization and other variables you need here
  */
-static struct semaphore *intersectionSem;
+//static struct semaphore *intersectionSem;
+
+static struct cv *car_can_go;
+static struct lock *intersectionLock;
+struct car{
+
+	Direction o;
+	Direction d;
+	struct car * next;
+};
+
+volatile struct car *car_list;
 
 
-/* 
- * The simulation driver will call this function once before starting
- * the simulation
- *
- * You can use it to initialize synchronization and other variables.
- * 
- */
+
+bool
+which_turn (Direction o, Direction d)
+{
+        bool i = false;
+
+        switch (o)
+                {
+                case north:
+                        if (d == west) i = true; 
+                        break;
+                case south:
+                        if (d == east) i = true;
+                        break;
+                case west:
+                        if (d == south) i = true;
+                        break;
+                case east:
+                        if (d == north) i = true;
+                        break;
+
+                }
+        return i;
+
+}
+
+bool car_cango (Direction o, Direction d) {
+
+	volatile struct car * temp = car_list;
+	while (temp) {
+		if (temp->o == o && temp->d == d) { temp = temp->next; continue; }
+		if (temp->o == d && temp->o == o) { temp= temp->next; continue; }
+		if (temp->d != d && (which_turn(o,d) || which_turn(temp->o, temp->d))) {
+		temp = temp->next;
+		continue;}
+		return false;
+		
+
+	}
+	return true;
+
+} 
+
+
 void
 intersection_sync_init(void)
 {
   /* replace this default implementation with your own implementation */
 
-  intersectionSem = sem_create("intersectionSem",1);
-  if (intersectionSem == NULL) {
-    panic("could not create intersection semaphore");
-  }
+
+	intersectionLock = lock_create("intersectionLock");
+        if (intersectionLock == NULL){
+                panic("could not create intersection lock");
+        }
+
+	car_can_go = cv_create("car_can_go");
+	if (car_can_go == NULL){
+		panic("could not create W_strgt_cango cv");
+
+	}
+	car_list = NULL;
+
   return;
 }
 
-/* 
- * The simulation driver will call this function once after
- * the simulation has finished
- *
- * You can use it to clean up any synchronization and other variables.
- *
- */
 void
 intersection_sync_cleanup(void)
 {
   /* replace this default implementation with your own implementation */
-  KASSERT(intersectionSem != NULL);
-  sem_destroy(intersectionSem);
+	//KASSERT(intersectionSem != NULL);
+	//sem_destroy(intersectionSem);
+	
+	KASSERT(intersectionLock != NULL);
+	lock_destroy(intersectionLock);
+	
+        KASSERT(car_can_go != NULL);
+        cv_destroy(car_can_go);
+
+	while(car_list) {
+		volatile struct car * temp = car_list;
+		car_list = car_list->next;
+		kfree((struct car*)temp);
+	}
 }
+
 
 
 /*
@@ -78,8 +141,25 @@ intersection_before_entry(Direction origin, Direction destination)
   /* replace this default implementation with your own implementation */
   (void)origin;  /* avoid compiler complaint about unused parameter */
   (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  P(intersectionSem);
+
+	KASSERT(intersectionLock != NULL);
+
+	KASSERT(car_can_go != NULL);
+
+	lock_acquire(intersectionLock);
+
+	while (!car_cango(origin, destination)){
+		cv_wait(car_can_go, intersectionLock);
+	}
+	volatile struct car * temp = kmalloc(sizeof(struct car));
+	temp->o = origin;
+	temp->d = destination;
+	temp->next = (struct car *)car_list;
+	car_list = temp;
+	lock_release(intersectionLock);
+
+
+
 }
 
 
@@ -100,6 +180,38 @@ intersection_after_exit(Direction origin, Direction destination)
   /* replace this default implementation with your own implementation */
   (void)origin;  /* avoid compiler complaint about unused parameter */
   (void)destination; /* avoid compiler complaint about unused parameter */
-  KASSERT(intersectionSem != NULL);
-  V(intersectionSem);
+  //KASSERT(intersectionSem != NULL);
+  //V(intersectionSem);
+	KASSERT(intersectionLock != NULL);
+
+        KASSERT(car_can_go != NULL);
+        
+	lock_acquire(intersectionLock);
+	volatile struct car * temp = car_list;
+	volatile struct car *pre = car_list;
+	if (temp->o == origin && temp->d == destination) {
+		car_list = car_list->next;
+		kfree((struct car *)temp);
+		cv_broadcast(car_can_go, intersectionLock);
+		lock_release(intersectionLock);
+		return;
+	}
+	temp = temp->next;
+	
+	while(temp) {
+		if (temp->o == origin && temp->d == destination) {
+			pre->next = temp->next;
+			kfree((struct car *)temp);
+			cv_broadcast(car_can_go, intersectionLock);
+			lock_release(intersectionLock);
+			return;
+		}
+	else { temp = temp->next; pre = pre->next;}
+
+
+	}
+
+	lock_release(intersectionLock);	
+
+
 }
