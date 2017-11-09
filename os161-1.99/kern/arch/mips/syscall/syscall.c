@@ -81,7 +81,7 @@ syscall(struct trapframe *tf)
 	int callno;
 	int32_t retval;
 	int err;
-
+	
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
 	KASSERT(curthread->t_iplhigh_count == 0);
@@ -132,6 +132,9 @@ syscall(struct trapframe *tf)
 #endif // UW
 
 	    /* Add stuff here */
+	case SYS_fork:
+		err = sys_fork(tf, &retval);
+	break;
  
 	default:
 	  kprintf("Unknown syscall %d\n", callno);
@@ -176,8 +179,10 @@ syscall(struct trapframe *tf)
  *
  * Thus, you can trash it and do things another way if you prefer.
  */
+/*
 void
 enter_forked_process(struct trapframe *tf)
 {
 	(void)tf;
 }
+*/

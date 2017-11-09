@@ -38,6 +38,7 @@
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
+#include <synch.h>
 
 struct addrspace;
 struct vnode;
@@ -48,6 +49,17 @@ struct semaphore;
 /*
  * Process structure.
  */
+
+
+//structure to recode a list of child process//
+struct child_proc_list {
+        struct proc * child;
+        struct child_proc_list * next;
+
+};
+
+
+
 struct proc {
 	char *p_name;			/* Name of this process */
 	struct spinlock p_lock;		/* Lock for this structure */
@@ -57,19 +69,32 @@ struct proc {
 	struct addrspace *p_addrspace;	/* virtual address space */
 
 	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
+	struct vnode *p_cwd;
+		/* current working directory */
+	pid_t pid;
+	struct proc *parent;
+	struct child_proc_list * child_list;
 
+	struct lock * p_wait_lock;
+	struct cv * p_wait_cv;
+	int state; //0 for zombie state and 1 for actvie state
+	int exit_status; 
 #ifdef UW
   /* a vnode to refer to the console device */
   /* this is a quick-and-dirty way to get console writes working */
   /* you will probably need to change this when implementing file-related
      system calls, since each process will need to keep track of all files
      it has opened, not just the console. */
-  struct vnode *console;                /* a vnode for the console device */
+  	struct vnode *console;                /* a vnode for the console device */
+	
+	
+
 #endif
 
 	/* add more material here as needed */
 };
+
+
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
@@ -100,5 +125,6 @@ struct addrspace *curproc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *curproc_setas(struct addrspace *);
 
+void anyproc_setas(struct addrspace *newas, struct proc * p);
 
 #endif /* _PROC_H_ */

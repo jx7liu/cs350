@@ -50,6 +50,7 @@
 #include <vfs.h>
 #include <synch.h>
 #include <kern/fcntl.h>  
+#include <synch.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -69,6 +70,8 @@ static struct semaphore *proc_count_mutex;
 struct semaphore *no_proc_sem;   
 #endif  // UW
 
+static volatile pid_t proc_pid_count;
+static struct semaphore *proc_pid_count_mutex;
 
 
 /*
@@ -102,6 +105,7 @@ proc_create(const char *name)
 #ifdef UW
 	proc->console = NULL;
 #endif // UW
+
 
 	return proc;
 }
@@ -208,6 +212,13 @@ proc_bootstrap(void)
     panic("could not create no_proc_sem semaphore\n");
   }
 #endif // UW 
+
+	proc_pid_count = 1;
+	proc_pid_count_mutex = sem_create("proc_pid_count",1);
+	if (proc_pid_count_mutex == NULL) {
+		panic("could not create proc_pid_count_mutex semaphore");
+	}
+
 }
 
 /*
@@ -270,7 +281,20 @@ proc_create_runprogram(const char *name)
 	proc_count++;
 	V(proc_count_mutex);
 #endif // UW
-
+	
+	proc->parent = NULL;
+	proc->child_list = NULL;
+	
+	//assigning pid for the process that just got created//
+	P(proc_pid_count_mutex);
+	proc_pid_count++;
+	proc->pid = proc_pid_count;
+	V(proc_pid_count_mutex);
+	
+	proc->p_wait_lock = lock_create("haha");
+	proc->p_wait_cv = cv_create("haha");
+	proc->state = 1;
+	
 	return proc;
 }
 
