@@ -10,7 +10,8 @@
 #include <addrspace.h>
 #include <copyinout.h>
 #include <mips/trapframe.h>
-
+#include <vfs.h>
+#include <kern/fcntl.h>
   /* this implementation of sys__exit does not do anything with the exit code */
   /* this needs to be fixed to get exit() and waitpid() working properly */
 
@@ -307,4 +308,138 @@ sys_fork(struct trapframe *tf, int32_t *retval)
 
 
 }
+
+int sys_execv (const char * pname, char **argv, int *retval) {
+
+	size_t pname_got;
+	char * pname_ker = NULL;
+	struct vnode *v;	
+	struct addrspace *as = NULL;
+	struct addrspace *old_as = NULL;
+	vaddr_t entrypoint, stackptr;
+	
+	//arg varaible
+	char **argv_ker = NULL;
+	int argnum = 0;
+	size_t len;
+
+
+	if (pname == NULL) {
+		*retval = -1; return EFAULT;
+	}
+
+	pname_ker = kmalloc(strlen(pname) + 1);
+	if (pname_ker == NULL) {
+		*retval = -1;
+		return ENOMEM;
+	}
+
+	copyinstr((const_userptr_t)pname, pname_ker, strlen(pname) + 1, &pname_got); 
+
+	//if (pname_got != strlen(pname) + 1) {
+	//	*retval = -1;
+	//	return EFAULT;
+	//}
+
+	//if (argv != NULL) {
+		while (argv[argnum] != NULL) {
+			argnum++;
+		}
+	//}
+	
+	argv_ker = kmalloc(sizeof(char*) * (argnum + 1));
+	if (argv_ker == NULL) {
+		*retval = -1;
+		return ENOMEM;
+	}
+	
+	size_t arglen;
+
+	for (int i = 0; i < argnum; i++) {
+		len = strlen(argv[i]) + 1;
+		argv_ker[i] = kmalloc(len);
+		if (argv_ker[i] == NULL) {
+			*retval = -1;
+			return ENOMEM;
+		}
+		copyinstr((const_userptr_t)argv[i], argv_ker[i], len, &arglen);
+
+	}
+
+	argv_ker[argnum] = NULL;	
+
+	int result = 0;
+	char *fname_temp;
+	fname_temp = kstrdup(pname_ker);
+	result = vfs_open(fname_temp, O_RDONLY, 0, &v);
+	if (result){
+		*retval = -1;
+		return result;
+	}
+
+//	KASSERT(curproc_getas() != NULL);
+
+	as = as_create();
+	if (as == NULL) {
+		vfs_close(v);
+		*retval = -1;
+		return ENOMEM;
+	}
+
+	old_as = curproc_getas();
+	curproc_setas(as);
+	as_activate();
+
+	result = load_elf(v, &entrypoint);
+	if (result) {
+		vfs_close(v);
+		*retval = -1;
+		return result;
+	}
+
+	vfs_close(v);
+
+	result = as_define_stack(as, &stackptr);
+	if (result) {
+		*retval = -1;
+		return result;
+	}
+
+	vaddr_t stack_addr[argnum + 1];
+	stack_addr[argnum] = (vaddr_t)NULL;
+	size_t stack_len;
+
+	for (int i = argnum - 1; i >= 0; i--) {
+		len = strlen(argv_ker[i]) + 1;
+		stackptr -= len;
+		stack_addr[i] = stackptr;
+		copyoutstr(argv_ker[i], (userptr_t)stackptr, len, &stack_len); 
+	}
+
+	while (stackptr%4 != 0) stackptr--;
+
+	for (int i = argnum; i >= 0; i--) {
+		stackptr -= ROUNDUP(sizeof(vaddr_t), 4);
+		copyout(&stack_addr[i], (userptr_t)stackptr, sizeof(vaddr_t));
+		
+	}
+	
+//	kfree(pname_ker);
+//	for (int i = 0; i < argnum + 1; i++) {
+//		kfree(argv[i]);
+//	}
+
+//	kfree(argv);
+	as_destroy(old_as);
+	
+	enter_new_process(argnum /*argc*/, (userptr_t)stackptr /*userspace addr of argv*/,
+			  stackptr, entrypoint);
+	
+	/* enter_new_process does not return. */
+	panic("enter_new_process returned\n");
+	return EINVAL;
+
+
+
+} 
 
